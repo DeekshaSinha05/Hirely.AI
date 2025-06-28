@@ -22,11 +22,22 @@ def extract_email(resume_text):
     logging.info(f"Extracted email (forced for test): {email}")
     return email
 
-def email_candidate(candidate_name, candidate_email, slot):
+def email_candidate(candidate_name, candidate_email, slot, subject, body):
     sender_email = SENDER_EMAIL
     sender_password = SENDER_PASSWORD  # Use app password or env var in production
-    subject = "Interview Availability Check - Hirely.AI"
-    body = f"Dear {candidate_name},\n\nWe are considering you for an interview slot: {slot}.\nPlease reply to confirm your availability or suggest alternatives.\n\nBest,\nHirely.AI Team"
+    # Replace slot placeholder in body if present
+    body = body.replace("{slot}", str(slot)).replace("{{slot}}", str(slot))
+    # Ensure the email ends with the correct signature
+    signature = "Best regards,\nHirely.AI Team"
+    if not body.rstrip().endswith(signature):
+        # Remove any trailing company name and add the correct signature
+        lines = body.rstrip().splitlines()
+        # Remove any trailing blank lines or company name
+        while lines and (not lines[-1].strip() or lines[-1].strip().lower() in ["hirely.ai", "hirely.ai team", "best regards,", "regards,", "sincerely,"]):
+            lines.pop()
+        # Add the correct signature
+        lines.append(signature)
+        body = "\n".join(lines)
     msg = MIMEMultipart()
     msg['From'] = sender_email
     msg['To'] = candidate_email
@@ -48,13 +59,16 @@ def main():
     for resume_file in resumes:
         resume_path = os.path.join(RESUME_DIR, resume_file)
         resume_text = extract_resume_text(resume_path)
-        score, reason = score_candidate(JOB_DESCRIPTION, resume_text)
+        score, reason, tools, email_subject, email_body = score_candidate(JOB_DESCRIPTION, resume_text)
         email = extract_email(resume_text)
         candidates.append({
             "name": resume_file,
             "score": score,
             "reason": reason,
-            "email": email
+            "email": email,
+            "tools": tools,
+            "email_subject": email_subject,
+            "email_body": email_body
         })
     candidates.sort(key=lambda x: x["score"], reverse=True)
     print("\nTop Candidates:")
@@ -64,10 +78,12 @@ def main():
     slots = suggest_interview_slots(len(candidates))
     for i, slot in enumerate(slots):
         print(slot)
-        # Email top N candidates (e.g., top 3)
-        if i < 3 and candidates[i]["email"]:
+        # Email top N candidates (e.g., top 3) if 'send_email' is in tools
+        if i < 3 and candidates[i]["email"] and "send_email" in candidates[i]["tools"]:
             candidate_name = candidates[i]["name"].replace('_', ' ').replace('.pdf', '')
-            email_candidate(candidate_name, candidates[i]["email"], slot)
+            email_candidate(candidate_name, candidates[i]["email"], slot, candidates[i]["email_subject"], candidates[i]["email_body"])
+        elif i < 3 and "send_email" not in candidates[i]["tools"]:
+            print(f"[INFO] Skipping email for {candidates[i]['name']} (send_email not in tools)")
 
 if __name__ == "__main__":
     main()
