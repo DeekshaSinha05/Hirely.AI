@@ -111,3 +111,5 @@ cython_debug/
 
 # PDF resumes (if you want to ignore generated resumes, uncomment below)
 # resumes/*.pdf
+
+credentials.json
